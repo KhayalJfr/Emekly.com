@@ -1,0 +1,233 @@
+import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
+import { supabase } from "@/integrations/supabase/client";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { toast } from "sonner";
+import { z } from "zod";
+import { ArrowLeft } from "lucide-react";
+
+const authSchema = z.object({
+  email: z.string().email("Düzgün email daxil edin"),
+  password: z.string().min(6, "Şifrə ən azı 6 simvol olmalıdır"),
+});
+
+const signupSchema = authSchema.extend({
+  fullName: z.string().min(2, "Ad ən azı 2 simvol olmalıdır"),
+  phone: z.string().optional(),
+  confirmPassword: z.string().min(6, "Şifrə ən azı 6 simvol olmalıdır"),
+}).refine((data) => data.password === data.confirmPassword, {
+  message: "Şifrələr uyğun gəlmir",
+  path: ["confirmPassword"],
+});
+
+const Auth = () => {
+  const navigate = useNavigate();
+  const [loading, setLoading] = useState(false);
+  const [loginData, setLoginData] = useState({ email: "", password: "" });
+  const [signupData, setSignupData] = useState({ email: "", password: "", confirmPassword: "", fullName: "", phone: "" });
+
+  useEffect(() => {
+    const checkUser = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        navigate("/");
+      }
+    };
+    checkUser();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (session) {
+        navigate("/");
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, [navigate]);
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+
+    try {
+      authSchema.parse(loginData);
+
+      const { error } = await supabase.auth.signInWithPassword({
+        email: loginData.email,
+        password: loginData.password,
+      });
+
+      if (error) throw error;
+      toast.success("Xoş gəlmisiniz!");
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        toast.error(error.errors[0].message);
+      } else if (error instanceof Error) {
+        toast.error(error.message);
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSignup = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+
+    try {
+      signupSchema.parse(signupData);
+
+      const { error } = await supabase.auth.signUp({
+        email: signupData.email,
+        password: signupData.password,
+        options: {
+          data: {
+            full_name: signupData.fullName,
+            phone: signupData.phone,
+          },
+          emailRedirectTo: `${window.location.origin}/`,
+        },
+      });
+
+      if (error) throw error;
+      toast.success("Hesab yaradıldı! Xoş gəlmisiniz!");
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        toast.error(error.errors[0].message);
+      } else if (error instanceof Error) {
+        toast.error(error.message);
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-background p-4">
+      <div className="w-full max-w-md space-y-6">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => navigate("/")}
+          className="gap-2 mb-4"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          Ana səhifə
+        </Button>
+        <div className="text-center">
+          <h1 className="text-4xl font-bold text-primary mb-2">Emekly</h1>
+          <p className="text-muted-foreground">Elan platforması</p>
+        </div>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Xoş gəlmisiniz</CardTitle>
+            <CardDescription>Daxil olun və ya qeydiyyatdan keçin</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Tabs defaultValue="login" className="w-full">
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="login">Daxil ol</TabsTrigger>
+                <TabsTrigger value="signup">Qeydiyyat</TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="login">
+                <form onSubmit={handleLogin} className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="login-email">Email</Label>
+                    <Input
+                      id="login-email"
+                      type="email"
+                      placeholder="email@example.com"
+                      value={loginData.email}
+                      onChange={(e) => setLoginData({ ...loginData, email: e.target.value })}
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="login-password">Şifrə</Label>
+                    <Input
+                      id="login-password"
+                      type="password"
+                      value={loginData.password}
+                      onChange={(e) => setLoginData({ ...loginData, password: e.target.value })}
+                      required
+                    />
+                  </div>
+                  <Button type="submit" className="w-full" disabled={loading}>
+                    {loading ? "Gözləyin..." : "Daxil ol"}
+                  </Button>
+                </form>
+              </TabsContent>
+
+              <TabsContent value="signup">
+                <form onSubmit={handleSignup} className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="signup-name">Ad Soyad</Label>
+                    <Input
+                      id="signup-name"
+                      type="text"
+                      placeholder="Ad Soyad"
+                      value={signupData.fullName}
+                      onChange={(e) => setSignupData({ ...signupData, fullName: e.target.value })}
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="signup-email">Email</Label>
+                    <Input
+                      id="signup-email"
+                      type="email"
+                      placeholder="email@example.com"
+                      value={signupData.email}
+                      onChange={(e) => setSignupData({ ...signupData, email: e.target.value })}
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="signup-phone">Telefon (istəyə bağlı)</Label>
+                    <Input
+                      id="signup-phone"
+                      type="tel"
+                      placeholder="+994 XX XXX XX XX"
+                      value={signupData.phone}
+                      onChange={(e) => setSignupData({ ...signupData, phone: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="signup-password">Şifrə</Label>
+                    <Input
+                      id="signup-password"
+                      type="password"
+                      value={signupData.password}
+                      onChange={(e) => setSignupData({ ...signupData, password: e.target.value })}
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="signup-confirm-password">Şifrəni təkrar daxil edin</Label>
+                    <Input
+                      id="signup-confirm-password"
+                      type="password"
+                      value={signupData.confirmPassword}
+                      onChange={(e) => setSignupData({ ...signupData, confirmPassword: e.target.value })}
+                      required
+                    />
+                  </div>
+                  <Button type="submit" className="w-full" disabled={loading}>
+                    {loading ? "Gözləyin..." : "Qeydiyyat"}
+                  </Button>
+                </form>
+              </TabsContent>
+            </Tabs>
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  );
+};
+
+export default Auth;
